@@ -16,7 +16,7 @@ class PointDrawer(object):
 
         ################  ↓ Step : build SAM  ↓  ##############
         device = "cuda"
-        model_type = "default"
+        model_type = "vit_b"
 
         from segment_anything import sam_model_registry, SamPredictor
 
@@ -60,6 +60,7 @@ class PointDrawer(object):
         self.mask = mask.copy()
 
     def run(self, rgb):
+        rgb = cv2.resize(rgb, (1080, int(1080 / 1920 * 1080)))
         self.predictor.set_image(rgb)
 
         image_to_show = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)

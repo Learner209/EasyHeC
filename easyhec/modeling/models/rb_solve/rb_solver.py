@@ -16,7 +16,7 @@ class RBSolver(nn.Module):
     def __init__(self, cfg):
         super().__init__()
         self.total_cfg = cfg
-        self.cfg = cfg.model.rbsolver
+        self.cfg = cfg.model.rbsolver_iter
 
         self.dbg = self.total_cfg.dbg
         mesh_paths = self.cfg.mesh_paths
@@ -32,11 +32,13 @@ class RBSolver(nn.Module):
         init_dof = se3_log_map(torch.as_tensor(init_Tc_c2b, dtype=torch.float32)[None].permute(0, 2, 1), eps=1e-5,
                                backend="opencv")[0]
         self.dof = nn.Parameter(init_dof, requires_grad=True)
+        init_K = torch.as_tensor(self.cfg.init_K, dtype=torch.float32)
+        self.K = nn.Parameter(init_K, requires_grad=True)
         # setup renderer
         self.H, self.W = self.cfg.H, self.cfg.W
         self.renderer = NVDiffrastRenderer([self.H, self.W])
-
-        self.register_buffer(f'history_ops', torch.zeros(10000, 6))
+        self.register_buffer(f"history_ops", torch.zeros(10000, 6))
+        self.register_buffer(f"history_K", torch.zeros(10000, 6))
 
     def forward(self, dps):
         vis3d = Vis3D(
@@ -47,14 +49,16 @@ class RBSolver(nn.Module):
             enable=self.dbg,
         )
         assert dps['global_step'] == 0
-        put_id = (self.history_ops == 0).all(dim=1).nonzero()[0, 0].item()
-        self.history_ops[put_id] = self.dof.detach()
+        put_ops_id = (self.history_ops == 0).all(dim=1).nonzero()[0, 0].item()
+        self.history_ops[put_ops_id] = self.dof.detach()
+        put_K_id = (self.history_K == 0).all(dim=1).nonzero()[0, 0].item()
+        self.history_K[put_K_id] = self.K.detach().flatten()[:6]
         Tc_c2b = se3_exp_map(self.dof[None]).permute(0, 2, 1)[0]
         losses = []
         all_frame_all_link_si = []
         masks_ref = dps['mask']
         link_poses = dps['link_poses']
-        K = dps['K'][0]
+        K = self.K
 
         batch_size = masks_ref.shape[0]
         for bid in range(batch_size):
