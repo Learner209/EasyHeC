@@ -32,7 +32,7 @@ from easyhec.utils.realsense_api import RealSenseAPI
 from easyhec.utils.vis3d_ext import Vis3D
 from easyhec.utils.utils_3d import se3_log_map, se3_exp_map
 
-from easycalib.utils.utilities import overlay_mask_on_img, render_mask
+from easycalib.utils.utilities import overlay_mask_on_img, render_mask, run_grounded_sam
 
 
 class RBSolverIterTrainer(BaseTrainer):
@@ -69,7 +69,6 @@ class RBSolverIterTrainer(BaseTrainer):
 
             self.arm = MoveGroupPythonInterfaceTutorial()
             self.arm.go_to_rest_pose()
-
 
     def train(self, epoch):
         loss_meter = AverageMeter()
@@ -168,7 +167,6 @@ class RBSolverIterTrainer(BaseTrainer):
             batch_imgs_paths: list of str, the paths of the images.
             qposes: list of np.ndarray, the qposes of the robot.
             camera_intrinsics: list of np.ndarray, the camera intrinsics.
-            grounded_sam_func: function, the function to get the grounded sam mask.
             gt_local_to_world_matrices: list of np.ndarray, the local to world matrices.
             H: int, the height of the image.
             W: int, the width of the image.
@@ -186,7 +184,6 @@ class RBSolverIterTrainer(BaseTrainer):
         batch_imgs_paths = kwargs["batch_imgs_paths"]
         qposes = kwargs["qposes"]
         camera_intrinsics = kwargs["camera_intrinsics"]
-        grounded_sam_func = kwargs["grounded_sam_func"]
         gt_local_to_world_matrices = kwargs["local_to_world_matrices"]
         H = kwargs["H"]
         W = kwargs["W"]
@@ -200,8 +197,6 @@ class RBSolverIterTrainer(BaseTrainer):
         ), "The number of images and qposes should be the same and greater than 0, get {} and {}".format(
             len(batch_imgs_paths), len(qposes)
         )
-        if self.cfg.model.rbsolver_iter.use_realarm.use_grounded_sam.enable:
-            grounded_sam_func = kwargs["grounded_sam_func"]
         self.clean_data_dir()
 
         if sampling_num == -1:
@@ -213,7 +208,6 @@ class RBSolverIterTrainer(BaseTrainer):
             self.capture_data(
                 batch_imgs_paths[explore_it],
                 camera_intrinsics[explore_it],
-                grounded_sam_func,
             )
             # Initialize camera intrinsics to avoid calling self.rebuild() accidentally initialize K.add()
             self.cfg.defrost()
@@ -246,17 +240,16 @@ class RBSolverIterTrainer(BaseTrainer):
                 rgb2=(0, 255, 255),
                 alpha=0.5,
                 show=True,
-                save_to_disk=True,
+                save_to_disk=False,
                 img_save_path=overlay_img_path,
             )
 
         self.reset_to_zero_qpos()
 
-        return Tc_c2b.detach().cpu().numpy()
+        return Tc_c2b.detach().cpu().numpy().tolist()
 
     def capture_data(
-        self, fake_img_path=None, fake_camera_intrinsics=None, grounded_sam_func=None
-    ):
+            self, fake_img_path=None, fake_camera_intrinsics=None):
         outdir = self.cfg.model.rbsolver_iter.data_dir
         os.makedirs(outdir, exist_ok=True)
         os.makedirs(osp.join(outdir, "color"), exist_ok=True)
@@ -321,7 +314,7 @@ class RBSolverIterTrainer(BaseTrainer):
                 arm.set_servo_angle(angle=qpose)
             else:
                 plan_qposes = self.plan_result['position']
-                self.arm.set_servo_angle(angle = plan_qposes)
+                self.arm.set_servo_angle(angle=plan_qposes)
 
         # capture data
         qpos = (
@@ -371,9 +364,16 @@ class RBSolverIterTrainer(BaseTrainer):
         model_weight = osp.join(POINTREND_DIR, pointrend_model_weight)
         image_path = osp.join(outdir, f"color/{index:06d}.png")
 
-        if self.cfg.model.rbsolver_iter.use_realarm.use_grounded_sam.enable is True:
-            grounded_sam_func(
-                frame_save_path=fake_img_path, mask_save_path=mask_save_path
+        if self.cfg.model.rbsolver_iter.use_grounded_sam.enable is True:
+            run_grounded_sam(
+                frame_save_path=fake_img_path, 
+                mask_save_path = mask_save_path,
+                text_prompt=self.cfg.model.rbsolver_iter.use_grounded_sam.text_prompt,
+                grounded_sam_script=self.cfg.model.rbsolver_iter.use_grounded_sam.grounded_sam_script,
+                grounded_sam_config=self.cfg.model.rbsolver_iter.use_grounded_sam.grounded_sam_config,
+                grounded_sam_checkpoint_path=self.model.rbsolver_iter.use_grounded_sam.grounded_sam_checkpoint_path,
+                grounded_sam_repo_path=self.cfg.model.rbsolver_iter.use_grounded_sam.grounded_sam_repo_path,
+                sam_checkpoint_path=self.cfg.model.rbsolver_iter.use_grounded_sam.sam_checkpoint_path,
             )
             pred_binary_mask = cv2.imread(mask_save_path)
 

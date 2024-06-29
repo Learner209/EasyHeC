@@ -142,10 +142,15 @@ _C.model.rbsolver_iter.use_realarm.use_sam.sam_checkpoint = (
     "segment_anything/sam_vit_b.pth"
 )
 _C.model.rbsolver_iter.use_realarm.use_grounded_sam = CN()
-_C.model.rbsolver_iter.use_realarm.use_grounded_sam.enable = (
+_C.model.rbsolver_iter.use_grounded_sam.enable = (
     True  # use SAM to predict mask
 )
-
+_C.model.rbsolver_iter.use_grounded_sam.text_prompt = None
+_C.model.rbsolver_iter.use_grounded_sam.grounded_sam_script = None
+_C.model.rbsolver_iter.use_grounded_sam.grounded_sam_config = None
+_C.model.rbsolver_iter.use_grounded_sam.grounded_sam_checkpoint_path = None
+_C.model.rbsolver_iter.use_grounded_sam.grounded_sam_repo_path = None
+_C.model.rbsolver_iter.use_grounded_sam.sam_checkpoint_path = None
 
 _C.model.rbsolver_iter.pointrend_cfg_file = "configs/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_xarm.yaml"
 _C.model.rbsolver_iter.pointrend_model_weight = "output/model_0099999.pth"
@@ -178,7 +183,7 @@ _C.solver.grad_clip = 1.0
 _C.solver.ds_len = -1
 _C.solver.batch_size = 1
 _C.solver.loss_function = ''
-####save ckpt configs#####
+#### save ckpt configs#####
 _C.solver.save_min_loss = 20.0
 _C.solver.save_every = False
 _C.solver.save_freq = 1
