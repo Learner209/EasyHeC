@@ -7,7 +7,6 @@ _C.dbg = True
 _C.evaltime = False
 _C.deterministic = False
 _C.backup_src = True
-_C.easyhec_repo_path = "/home/liilu/Desktop/robotflow/easy_calib/third_party/easyhec"
 _C.use_xarm = False
 
 _C.sim_mask_data = CN()
