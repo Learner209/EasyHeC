@@ -141,7 +141,7 @@ _C.model.rbsolver_iter.use_realarm.use_sam.enable = False  # use SAM to predict 
 _C.model.rbsolver_iter.use_realarm.use_sam.sam_checkpoint = (
     "segment_anything/sam_vit_b.pth"
 )
-_C.model.rbsolver_iter.use_realarm.use_grounded_sam = CN()
+_C.model.rbsolver_iter.use_grounded_sam = CN()
 _C.model.rbsolver_iter.use_grounded_sam.enable = (
     True  # use SAM to predict mask
 )
