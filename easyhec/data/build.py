@@ -1,12 +1,12 @@
 import torch.utils.data
-from loguru import logger
 from torch.utils.data.dataset import ConcatDataset
 
 from easyhec.utils.imports import import_file
 from . import datasets as D
 from .collators.build import make_batch_collator
 from .transforms import build_transforms
-
+import logging
+logger = logging.getLogger(__name__)
 
 def build_dataset(cfg, dataset_list, transforms, dataset_catalog, is_train=True, ds_len=-1):
     if not isinstance(dataset_list, (list, tuple)):

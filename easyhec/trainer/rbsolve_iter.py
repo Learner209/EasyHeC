@@ -15,7 +15,6 @@ from dl_ext.average_meter import AverageMeter
 from dl_ext.pytorch_ext.dist import *
 from dl_ext.pytorch_ext.optim import OneCycleScheduler
 from dl_ext.timer import EvalTime
-from loguru import logger
 from torch import nn
 from torch.nn.utils import clip_grad_norm_, clip_grad_value_
 
@@ -33,7 +32,8 @@ from easyhec.utils.vis3d_ext import Vis3D
 from easyhec.utils.utils_3d import se3_log_map, se3_exp_map
 
 from easycalib.utils.utilities import overlay_mask_on_img, render_mask, run_grounded_sam
-
+import logging
+logger = logging.getLogger(__name__)
 
 class RBSolverIterTrainer(BaseTrainer):
     def __init__(self, cfg):

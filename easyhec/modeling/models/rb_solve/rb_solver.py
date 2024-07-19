@@ -10,8 +10,8 @@ from easyhec.utils import utils_3d
 from easyhec.utils.utils_3d import se3_log_map, se3_exp_map
 from easyhec.utils.vis3d_ext import Vis3D
 
-from loguru import logger
-
+import logging
+logger = logging.getLogger(__name__)
 class RBSolver(nn.Module):
     def __init__(self, cfg):
         super().__init__()

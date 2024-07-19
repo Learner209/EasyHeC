@@ -10,14 +10,14 @@ from PIL import Image
 from dl_ext.average_meter import AverageMeter
 from dl_ext.pytorch_ext.dist import *
 from dl_ext.pytorch_ext.optim import OneCycleScheduler
-from loguru import logger
 from torch.nn.utils import clip_grad_norm_, clip_grad_value_
 from tqdm import tqdm
 
 from easyhec.trainer.base import BaseTrainer
 from easyhec.trainer.utils import *
 from easyhec.utils import plt_utils
-
+import logging
+logger = logging.getLogger(__name__)
 
 class RBSolverTrainer(BaseTrainer):
     def train(self, epoch):

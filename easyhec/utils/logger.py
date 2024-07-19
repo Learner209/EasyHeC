@@ -3,8 +3,8 @@ import os.path as osp
 import os
 import sys
 
-from loguru import logger
-
+import logging
+logger = logging.getLogger(__name__)
 
 def setup_logger(save_dir, filename="log.txt"):
     logger.remove()

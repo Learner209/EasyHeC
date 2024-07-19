@@ -11,7 +11,6 @@ import numpy as np
 from dl_ext.average_meter import AverageMeter
 from dl_ext.pytorch_ext.dist import *
 from dl_ext.pytorch_ext.optim import OneCycleScheduler, LRFinder
-from loguru import logger
 from matplotlib import axes, figure
 from termcolor import colored
 from torch import nn
@@ -28,7 +27,8 @@ from easyhec.solver.build import make_optimizer, make_lr_scheduler
 from easyhec.trainer.utils import *
 from easyhec.utils.os_utils import red
 from easyhec.utils.tb_utils import get_summary_writer
-
+import logging
+logger = logging.getLogger(__name__)
 
 class BaseTrainer:
 

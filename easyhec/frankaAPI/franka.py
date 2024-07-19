@@ -5,9 +5,9 @@ import rospy
 import moveit_commander
 import moveit_msgs.msg
 import geometry_msgs.msg
-from loguru import logger
 import time
-
+import logging
+logger = logging.getLogger(__name__)
 
 try:
     from math import pi, tau, dist, fabs, cos
