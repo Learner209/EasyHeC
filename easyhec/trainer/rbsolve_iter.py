@@ -31,8 +31,9 @@ from easyhec.utils.realsense_api import RealSenseAPI
 from easyhec.utils.utils_3d import se3_log_map, se3_exp_map
 
 from easycalib.utils.utilities import overlay_mask_on_img, render_mask, run_grounded_sam
-import logging
-logger = logging.getLogger(__name__)
+from easycalib.utils.setup_logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class RBSolverIterTrainer(BaseTrainer):
@@ -60,7 +61,7 @@ class RBSolverIterTrainer(BaseTrainer):
         metric_ams = {}
         bar = tqdm.tqdm(self.train_dl, leave=False) if is_main_process() and len(self.train_dl) > 1 else self.train_dl
         begin = time.time()
-        for batchid, batch in enumerate(bar):
+        for batchid, batch in enumerate(self.train_dl):
             self.optimizer.zero_grad()
             batch = to_cuda(batch)
             batch['global_step'] = batchid
@@ -110,7 +111,7 @@ class RBSolverIterTrainer(BaseTrainer):
         Tc_c2b = se3_exp_map(self.model.dof[None]).permute(0, 2, 1)[0]
         torch.cuda.synchronize()
         epoch_time = format_time(time.time() - begin)
-        if is_main_process():
+        if epoch % self.cfg.solver.log_interval == 0:
             metric_msgs = ['epoch %d, train, loss %.4f, time %s' % (
                 epoch, loss_meter.avg, epoch_time)]
             for metric, v in metric_ams.items():
@@ -277,16 +278,19 @@ class RBSolverIterTrainer(BaseTrainer):
                 grounded_sam_repo_path=self.cfg.model.rbsolver_iter.use_grounded_sam.grounded_sam_repo_path,
                 sam_checkpoint_path=self.cfg.model.rbsolver_iter.use_grounded_sam.sam_checkpoint_path,
             )
-        elif self.cfg.model.rbsolver_iter.use_grounded_sam.enable:
+        elif self.cfg.model.rbsolver_iter.use_realarm.use_sam.enable:
             point_drawer = PointDrawer(
                 screen_scale=1.75,
                 sam_checkpoint=self.cfg.model.rbsolver_iter.use_realarm.use_sam.sam_checkpoint,
             )
             _, _, pred_binary_mask = point_drawer.run(rgb)
             pred_binary_mask = (pred_binary_mask * 255).astype(np.uint8)
+        else:
+            raise Exception("Not a vaild method to generate mask.")
 
         cv2.imshow("pred_binary_mask", pred_binary_mask)
-        cv2.waitKey(100)
+        cv2.waitKey(10)
+        cv2.destroyAllWindows()
 
         outpath = osp.join(outdir, "mask", osp.basename(image_path))
         os.makedirs(osp.dirname(outpath), exist_ok=True)
