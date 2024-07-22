@@ -137,8 +137,9 @@ _C.model.rbsolver_iter.use_realarm.timestep = 0.1
 _C.model.rbsolver_iter.use_realarm.safety_factor = 3
 _C.model.rbsolver_iter.use_realarm.use_sam = CN()
 _C.model.rbsolver_iter.use_realarm.use_sam.enable = True  # use SAM to predict mask
+_C.model.rbsolver_iter.use_realarm.use_sam.sam_type = "vit_h"  # use SAM to predict mask
 _C.model.rbsolver_iter.use_realarm.use_sam.sam_checkpoint = (
-    "pretrained_checkpoints/sam_vit_b_01ec64.pth"
+    "pretrained_checkpoints/sam_vit_h_4b8939.pth"
 )
 _C.model.rbsolver_iter.use_grounded_sam = CN()
 _C.model.rbsolver_iter.use_grounded_sam.enable = (

@@ -26,7 +26,7 @@ from easyhec.trainer.base import BaseTrainer
 from easyhec.trainer.utils import *
 from easyhec.utils import plt_utils
 from easyhec.utils.os_utils import archive_runs
-from easyhec.utils.point_drawer import PointDrawer
+from easycalib.utils.point_drawer import PointDrawer
 from easyhec.utils.realsense_api import RealSenseAPI
 from easyhec.utils.utils_3d import se3_log_map, se3_exp_map
 
@@ -279,18 +279,19 @@ class RBSolverIterTrainer(BaseTrainer):
                 sam_checkpoint_path=self.cfg.model.rbsolver_iter.use_grounded_sam.sam_checkpoint_path,
             )
         elif self.cfg.model.rbsolver_iter.use_realarm.use_sam.enable:
-            point_drawer = PointDrawer(
-                screen_scale=1.75,
+            pointdrawer = PointDrawer(
                 sam_checkpoint=self.cfg.model.rbsolver_iter.use_realarm.use_sam.sam_checkpoint,
+                sam_model_type=self.cfg.model.rbsolver_iter.use_realarm.use_sam.sam_type,
+                window_name="Easyhec mask segm",
             )
-            _, _, pred_binary_mask = point_drawer.run(rgb)
+            _, _, pred_binary_mask = pointdrawer.run(rgb)
             pred_binary_mask = (pred_binary_mask * 255).astype(np.uint8)
         else:
             raise Exception("Not a vaild method to generate mask.")
 
         cv2.imshow("pred_binary_mask", pred_binary_mask)
         cv2.waitKey(10)
-        cv2.destroyAllWindows()
+        # cv2.destroyAllWindows()
 
         outpath = osp.join(outdir, "mask", osp.basename(image_path))
         os.makedirs(osp.dirname(outpath), exist_ok=True)
