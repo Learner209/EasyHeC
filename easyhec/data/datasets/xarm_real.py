@@ -31,7 +31,7 @@ class XarmRealDataset(torch.utils.data.Dataset):
             rgb = np.array(imageio.imread_v2(rgb_path))[..., :3]
             self.images.append(rgb)
         for mask_path in mask_paths:
-            mask = imageio.imread_v2(mask_path)[..., 0] > 0
+            mask = imageio.imread_v2(mask_path) > 0
             self.masks.append(mask)
         if len(self.masks) > 0:
             self.masks = np.stack(self.masks)

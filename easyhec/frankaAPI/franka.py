@@ -1,10 +1,6 @@
 from __future__ import print_function
 
 import sys
-import rospy
-import moveit_commander
-import moveit_msgs.msg
-import geometry_msgs.msg
 import time
 import logging
 logger = logging.getLogger(__name__)
@@ -20,8 +16,17 @@ except:  # For Python 2 compatibility
         return sqrt(sum((p_i - q_i) ** 2.0 for p_i, q_i in zip(p, q)))
 
 
-from std_msgs.msg import String
-from moveit_commander.conversions import pose_to_list
+ROSPY_INSTALLED = True
+try:
+    import rospy
+    import moveit_commander
+    import moveit_msgs.msg
+    import geometry_msgs.msg
+    from std_msgs.msg import String
+    from moveit_commander.conversions import pose_to_list
+except ImportError:
+    print("ROSPY is not installed.")
+    ROSPY_INSTALLED = False
 
 ## END_SUB_TUTORIAL
 

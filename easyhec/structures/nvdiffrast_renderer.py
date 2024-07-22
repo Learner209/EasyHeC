@@ -30,6 +30,7 @@ class NVDiffrastRenderer:
         @param object_pose: 4,4 torch.tensor, float, cuda
         @return: mask: 0 to 1, HxW torch.cuda.FloatTensor
         """
+        K = K.cuda().float()
         proj = K_to_projection(K, self.H, self.W)
 
         pose = self.opencv2blender @ object_pose

@@ -156,7 +156,7 @@ _C.model.rbsolver_iter.pointrend_model_weight = "output/model_0099999.pth"
 
 _C.solver = CN()
 _C.solver.explore_iters = 10  # explore iterations for rendering-based solver
-_C.solver.num_epochs = 1
+_C.solver.num_epochs = 500
 _C.solver.max_lr = 0.001
 _C.solver.end_lr = 0.0001
 _C.solver.bias_lr_factor = 1

@@ -8,7 +8,6 @@ import trimesh
 from easyhec.structures.nvdiffrast_renderer import NVDiffrastRenderer
 from easyhec.utils import utils_3d
 from easyhec.utils.utils_3d import se3_log_map, se3_exp_map
-from easyhec.utils.vis3d_ext import Vis3D
 
 import logging
 logger = logging.getLogger(__name__)
@@ -32,22 +31,14 @@ class RBSolver(nn.Module):
         init_dof = se3_log_map(torch.as_tensor(init_Tc_c2b, dtype=torch.float32)[None].permute(0, 2, 1), eps=1e-5,
                                backend="opencv")[0]
         self.dof = nn.Parameter(init_dof, requires_grad=True)
-        init_K = torch.as_tensor(self.cfg.init_K, dtype=torch.float32)
-        self.K = nn.Parameter(init_K, requires_grad=True)
-        # setup renderer
+        self.K = torch.as_tensor(self.cfg.init_K, dtype=torch.float32)
         self.H, self.W = self.cfg.H, self.cfg.W
         self.renderer = NVDiffrastRenderer([self.H, self.W])
         self.register_buffer(f"history_ops", torch.zeros(10000, 6))
         self.register_buffer(f"history_K", torch.zeros(10000, 6))
 
     def forward(self, dps):
-        vis3d = Vis3D(
-            xyz_pattern=("x", "-y", "-z"),
-            out_folder="dbg",
-            sequence="rbsolver_forward",
-            auto_increase=True,
-            enable=self.dbg,
-        )
+
         assert dps['global_step'] == 0
         put_ops_id = (self.history_ops == 0).all(dim=1).nonzero()[0, 0].item()
         self.history_ops[put_ops_id] = self.dof.detach()
@@ -66,7 +57,6 @@ class RBSolver(nn.Module):
             for link_idx in range(self.nlinks):
                 Tc_c2l = Tc_c2b @ link_poses[bid, link_idx]
                 verts, faces = getattr(self, f"vertices_{link_idx}"), getattr(self, f"faces_{link_idx}")
-                vis3d.add_mesh(utils_3d.transform_points(verts, Tc_c2l), faces, name=f"link{link_idx}")
                 si = self.renderer.render_mask(verts, faces, K=K, object_pose=Tc_c2l)
                 all_link_si.append(si)
             all_link_si = torch.stack(all_link_si).sum(0).clamp(max=1)

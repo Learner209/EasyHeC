@@ -28,12 +28,12 @@ from easyhec.utils import plt_utils
 from easyhec.utils.os_utils import archive_runs
 from easyhec.utils.point_drawer import PointDrawer
 from easyhec.utils.realsense_api import RealSenseAPI
-from easyhec.utils.vis3d_ext import Vis3D
 from easyhec.utils.utils_3d import se3_log_map, se3_exp_map
 
 from easycalib.utils.utilities import overlay_mask_on_img, render_mask, run_grounded_sam
 import logging
 logger = logging.getLogger(__name__)
+
 
 class RBSolverIterTrainer(BaseTrainer):
     def __init__(self, cfg):
@@ -53,22 +53,6 @@ class RBSolverIterTrainer(BaseTrainer):
         self.best_val_loss = 100000
         self.val_loss = 100000
         self.qposes = np.array(self.cfg.model.rbsolver_iter.start_qpos)[None]
-        if self.cfg.model.rbsolver_iter.use_realarm.enable is True and self.cfg.use_xarm is True:
-            ip = self.cfg.model.rbsolver_iter.use_realarm.ip
-            from xarm import XArmAPI
-            arm = XArmAPI(ip)
-            arm.motion_enable(enable=True)
-            arm.set_mode(0)
-            arm.set_state(state=0)
-            self.arm = arm
-        elif (
-            self.cfg.use_xarm is False
-            and self.cfg.model.rbsolver_iter.use_realarm.enable is True
-        ):
-            from easyhec.frankaAPI import MoveGroupPythonInterfaceTutorial
-
-            self.arm = MoveGroupPythonInterfaceTutorial()
-            self.arm.go_to_rest_pose()
 
     def train(self, epoch):
         loss_meter = AverageMeter()
@@ -123,9 +107,10 @@ class RBSolverIterTrainer(BaseTrainer):
             self.global_steps += 1
             if self.global_steps % self.save_freq == 0:
                 self.try_to_save(epoch, 'iteration')
+        Tc_c2b = se3_exp_map(self.model.dof[None]).permute(0, 2, 1)[0]
         torch.cuda.synchronize()
         epoch_time = format_time(time.time() - begin)
-        if is_main_process() and epoch % self.cfg.solver.log_interval == 0:
+        if is_main_process():
             metric_msgs = ['epoch %d, train, loss %.4f, time %s' % (
                 epoch, loss_meter.avg, epoch_time)]
             for metric, v in metric_ams.items():
@@ -134,7 +119,7 @@ class RBSolverIterTrainer(BaseTrainer):
             logger.info(s)
         if self.scheduler is not None and not isinstance(self.scheduler, OneCycleScheduler):
             self.scheduler.step()
-        return metric_ams
+        return metric_ams, Tc_c2b
 
     def image_grid_on_tb_writer(self, images, tb_writer, tag, global_step):
         plt_utils.image_grid(images, show=False)
@@ -147,9 +132,10 @@ class RBSolverIterTrainer(BaseTrainer):
         os.makedirs(self.output_dir, exist_ok=True)
         num_epochs = self.num_epochs
         begin = time.time()
+        Tc_c2b = None
 
         for epoch in tqdm.trange(num_epochs):
-            metric_ams = self.train(epoch)
+            metric_ams, Tc_c2b = self.train(epoch)
             synchronize()
             if not self.save_every and epoch % self.cfg.solver.val_freq == 0:
                 self.val_loss = self.val(epoch)
@@ -159,26 +145,26 @@ class RBSolverIterTrainer(BaseTrainer):
             synchronize()
         if is_main_process():
             logger.info('Training finished. Total time %s' % (format_time(time.time() - begin)))
-        return metric_ams
+        return metric_ams, Tc_c2b
 
     def fit(self, **kwargs):
         """train the model to get the camera_2_robot extriniscMatrix. 
         Params:
-            batch_imgs_paths: list of str, the paths of the images.
-            qposes: list of np.ndarray, the qposes of the robot.
-            camera_intrinsics: list of np.ndarray, the camera intrinsics.
-            gt_local_to_world_matrices: list of np.ndarray, the local to world matrices.
-            H: int, the height of the image.
-            W: int, the width of the image.
-            urdf_path: str, the path of the urdf file.
-            mesh_paths: list of str, the paths of the meshes.
-            local_save_path: str, the path to save the outputs.
+                batch_imgs_paths: list of str, the paths of the images.
+                qposes: list of np.ndarray, the qposes of the robot.
+                camera_intrinsics: list of np.ndarray, the camera intrinsics.
+                gt_local_to_world_matrices: list of np.ndarray, the local to world matrices.
+                H: int, the height of the image.
+                W: int, the width of the image.
+                urdf_path: str, the path of the urdf file.
+                mesh_paths: list of str, the paths of the meshes.
+                local_save_path: str, the path to save the outputs.
         Note:
-            batch_imgs_paths and qposes are compulsory as raw-captured images and robot-joints-positions are required to train the EasyHeC model.
-            However, the rest of the parameters actually can be optional since they are not involved directly into the training proceudure.
-            We include them here for debugging purposes(render the gt_mask and pred_mask).
+                batch_imgs_paths and qposes are compulsory as raw-captured images and robot-joints-positions are required to train the EasyHeC model.
+                However, the rest of the parameters actually can be optional since they are not involved directly into the training proceudure.
+                We include them here for debugging purposes(render the gt_mask and pred_mask).
         Returns:
-            np.ndarray: the fitted Tc_c2b 4x4 Matrix.
+                np.ndarray: the fitted Tc_c2b 4x4 Matrix.
         """
         Tc_c2b = None
         batch_imgs_paths = kwargs["batch_imgs_paths"]
@@ -208,25 +194,17 @@ class RBSolverIterTrainer(BaseTrainer):
             self.capture_data(
                 batch_imgs_paths[explore_it],
                 camera_intrinsics[explore_it],
+                local_save_path
             )
-            # Initialize camera intrinsics to avoid calling self.rebuild() accidentally initialize K.add()
-            self.cfg.defrost()
-            self.cfg.model.rbsolver_iter.init_K = camera_intrinsics[explore_it]
-            self.cfg.freeze()
             # Initialize Tc_c2b, K if self.cfg.model.rbsolver_iter.init_Tc_c2b/K is empty.
             # Make train/test data loader, optimizer, scheduler.
             self.rebuild()
             metric_ams, Tc_c2b = self.do_fit(explore_it)
-            self.cfg.defrost()
-            self.cfg.model.rbsolver_iter.init_Tc_c2b = (
-                Tc_c2b.detach().cpu().numpy().tolist()
-            )
-            self.cfg.freeze()
+
             for k, am in metric_ams.items():
                 self.tb_writer.add_scalar("val/" + k, am.avg, explore_it)
             to_zero = explore_it == self.cfg.solver.explore_iters - 1
             self.explore_next_state(explore_it, to_zero, qposes[explore_it])
-            logger.info(f"explore_it: {explore_it}, Tc_c2b: {Tc_c2b}, Camera_K: {camera_intrinsics[explore_it]}")
 
             # render gt mask and pred mask and overlay.
             gt_mask = render_mask(urdf_path, mesh_paths, gt_local_to_world_matrices[explore_it], np.array(camera_intrinsics[explore_it]), H, W, qposes[explore_it])
@@ -249,7 +227,7 @@ class RBSolverIterTrainer(BaseTrainer):
         return Tc_c2b.detach().cpu().numpy().tolist()
 
     def capture_data(
-            self, fake_img_path=None, fake_camera_intrinsics=None):
+            self, fake_img_path=None, fake_camera_intrinsics=None, local_save_path=None):
         outdir = self.cfg.model.rbsolver_iter.data_dir
         os.makedirs(outdir, exist_ok=True)
         os.makedirs(osp.join(outdir, "color"), exist_ok=True)
@@ -259,63 +237,8 @@ class RBSolverIterTrainer(BaseTrainer):
 
         np.savetxt(osp.join(outdir, "Tc_c2b.txt"), np.eye(4))  # fake ground-truth Tc_c2b
 
-        vis3d = Vis3D(
-            xyz_pattern=("x", "-y", "-z"),
-            out_folder="dbg",
-            sequence="rbsolver_iter_realsense_capture_data",
-            auto_increase=True,
-            enable=True,
-        )
         index = len(self.qposes) - 1
         qpose = self.qposes[-1]
-        vis3d.add_xarm(qpose.tolist() + [0, 0])
-
-        if (
-            self.cfg.model.rbsolver_iter.use_realarm.enable is True
-            and self.cfg.use_xarm is True
-        ):
-            arm = self.arm
-            speed = self.cfg.model.rbsolver_iter.use_realarm.speed
-            if len(self.qposes) == 1:
-                arm.set_servo_angle(angle=qpose, is_radian=True, speed=speed, wait=True)
-            else:
-                plan_qposes = self.plan_result["position"]
-                if not self.cfg.model.rbsolver_iter.use_realarm.speed_control:
-                    for plan_qpose in tqdm.tqdm(plan_qposes):
-                        arm.set_servo_angle(
-                            angle=plan_qpose, is_radian=True, speed=speed, wait=True
-                        )
-                else:
-                    safety_factor = (
-                        self.cfg.model.rbsolver_iter.use_realarm.safety_factor
-                    )
-                    timestep = self.cfg.model.rbsolver_iter.use_realarm.timestep
-                    arm.set_mode(4)
-                    arm.set_state(state=0)
-                    time.sleep(1)
-                    if 'PYCHARM_HOSTED' not in os.environ:
-                        input("Please visualize the next joint pose in Wis3D and press Enter to drive the robot...")
-                    for ti, target_qpos in enumerate(tqdm.tqdm(plan_qposes)):
-                        code, joint_state = arm.get_joint_states(is_radian=True)
-                        joint_pos = joint_state[0][:7]
-                        diff = target_qpos[:7] - joint_pos
-                        qvel = diff / timestep / safety_factor
-                        qvel_cliped = np.clip(qvel, -0.3, 0.3)
-                        arm.vc_set_joint_velocity(qvel_cliped, is_radian=True, is_sync=True, duration=timestep)
-                        time.sleep(timestep)
-                    arm.set_mode(0)
-                    time.sleep(1)
-            time.sleep(self.cfg.model.rbsolver_iter.use_realarm.wait_time)
-        elif (
-            self.cfg.use_xarm is False
-            and self.cfg.model.rbsolver_iter.use_realarm.enable is True
-        ):
-            if len(self.qposes) == 1:
-                arm.set_servo_angle(angle=qpose)
-            else:
-                plan_qposes = self.plan_result['position']
-                self.arm.set_servo_angle(angle=plan_qposes)
-
         # capture data
         qpos = (
             self.plan_result["position"]
@@ -323,21 +246,13 @@ class RBSolverIterTrainer(BaseTrainer):
             else self.cfg.model.rbsolver_iter.start_qpos
         )
 
-        fake_img = cv2.imread(fake_img_path)
-        fake_img_dir = osp.dirname(fake_img_path)
-        fake_img_name, fake_img_ext = osp.splitext(osp.basename(fake_img_path))
-        mask_dir = osp.join(fake_img_dir, "%s.d" % fake_img_name)
-        os.makedirs(mask_dir, exist_ok=True)
-        mask_save_path = osp.join(mask_dir, fake_img_name + "_mask" + fake_img_ext)
-        cv2.imshow("fake_img", fake_img)
-        cv2.waitKey(20)
+        mask_save_dir = osp.join(local_save_path, "mask")
+        os.makedirs(mask_save_dir, exist_ok=True)
+        mask_save_path = osp.join(mask_save_dir, "%04s_mask.png" % osp.splitext(osp.basename(fake_img_path))[0])
 
-        rgb, K = RealSenseAPI.capture_phoneic_data(
-            cfg=self.cfg,
-            qpos=qpos,
-            fake_img_data=fake_img,
-            fake_camera_intrinsics=fake_camera_intrinsics,
-        )
+        rgb = cv2.imread(fake_img_path)
+        K = fake_camera_intrinsics
+
         np.savetxt(osp.join(outdir, "K.txt"), K)
         self.K = K
         self.cfg.defrost()
@@ -346,62 +261,38 @@ class RBSolverIterTrainer(BaseTrainer):
         self.cfg.freeze()
 
         imageio.imwrite(osp.join(outdir, f"color/{index:06d}.png"), rgb)
-        vis3d.add_image(rgb, name='img')
 
-        if self.cfg.model.rbsolver_iter.use_realarm.enable is True:
-            retcode, curr_radian = arm.get_servo_angle(is_radian=True)
-            assert retcode == 0
-        else:
-            curr_radian = qpos[:7]
+        curr_radian = qpos[:7]
         np.savetxt(osp.join(outdir, f"qpos/{index:06d}.txt"), curr_radian)
-
-        POINTREND_DIR = osp.join(
-            osp.abspath("."), "third_party/detectron2/projects/PointRend"
-        )
-        pointrend_cfg_file = self.cfg.model.rbsolver_iter.pointrend_cfg_file
-        pointrend_model_weight = self.cfg.model.rbsolver_iter.pointrend_model_weight
-        config_file = osp.join(POINTREND_DIR, pointrend_cfg_file)
-        model_weight = osp.join(POINTREND_DIR, pointrend_model_weight)
         image_path = osp.join(outdir, f"color/{index:06d}.png")
 
         if self.cfg.model.rbsolver_iter.use_grounded_sam.enable is True:
-            run_grounded_sam(
-                frame_save_path=fake_img_path, 
-                mask_save_path = mask_save_path,
+            pred_binary_mask = run_grounded_sam(
+                frame_save_path=fake_img_path,
+                mask_save_path=mask_save_path,
                 text_prompt=self.cfg.model.rbsolver_iter.use_grounded_sam.text_prompt,
                 grounded_sam_script=self.cfg.model.rbsolver_iter.use_grounded_sam.grounded_sam_script,
                 grounded_sam_config=self.cfg.model.rbsolver_iter.use_grounded_sam.grounded_sam_config,
-                grounded_sam_checkpoint_path=self.model.rbsolver_iter.use_grounded_sam.grounded_sam_checkpoint_path,
+                grounded_sam_checkpoint_path=self.cfg.model.rbsolver_iter.use_grounded_sam.grounded_sam_checkpoint_path,
                 grounded_sam_repo_path=self.cfg.model.rbsolver_iter.use_grounded_sam.grounded_sam_repo_path,
                 sam_checkpoint_path=self.cfg.model.rbsolver_iter.use_grounded_sam.sam_checkpoint_path,
             )
-            pred_binary_mask = cv2.imread(mask_save_path)
-
-        elif self.cfg.model.rbsolver_iter.use_realarm.use_sam.enable is True:
+        elif self.cfg.model.rbsolver_iter.use_grounded_sam.enable:
             point_drawer = PointDrawer(
                 screen_scale=1.75,
                 sam_checkpoint=self.cfg.model.rbsolver_iter.use_realarm.use_sam.sam_checkpoint,
             )
             _, _, pred_binary_mask = point_drawer.run(rgb)
-            pred_binary_mask = pred_binary_mask.astype(np.uint8)
-        else:
-            from easyhec.utils.pointrend_api import pointrend_api
+            pred_binary_mask = (pred_binary_mask * 255).astype(np.uint8)
 
-            pred_binary_mask = pointrend_api(config_file, model_weight, image_path)
-
-        pred_binary_mask = pred_binary_mask.astype(np.uint8)
-        # pred_binary_mask = cv2.resize(pred_binary_mask, (1920, 1080))
         cv2.imshow("pred_binary_mask", pred_binary_mask)
         cv2.waitKey(100)
 
         outpath = osp.join(outdir, "mask", osp.basename(image_path))
         os.makedirs(osp.dirname(outpath), exist_ok=True)
         imageio.imsave(outpath, pred_binary_mask)
-        # tmp = plt_utils.vis_mask(rgb, pred_binary_mask.astype(np.uint8), [255, 0, 0])
-        vis3d.add_image(pred_binary_mask, name="hover_pred_mask")
 
     def explore_next_state(self, explore_it, to_zero=False, fake_qpos=None):
-        print("the fake qpos is %s" % str(fake_qpos))
         if fake_qpos is not None:
             outputs = {"qpos": fake_qpos, "plan_results": {"position": fake_qpos}}
         else:
@@ -454,35 +345,7 @@ class RBSolverIterTrainer(BaseTrainer):
         return torch.empty([])
 
     def reset_to_zero_qpos(self):
-        if (
-            self.cfg.model.rbsolver_iter.use_realarm.enable is True
-            and self.cfg.use_xarm is True
-        ):
-            arm = self.arm
-            speed = self.cfg.model.rbsolver_iter.use_realarm.speed
-            plan_qposes = self.plan_result['position']
-            if not self.cfg.model.rbsolver_iter.use_realarm.speed_control:
-                for plan_qpose in tqdm.tqdm(plan_qposes):
-                    arm.set_servo_angle(angle=plan_qpose, is_radian=True, speed=speed, wait=True)
-            else:
-                safety_factor = self.cfg.model.rbsolver_iter.use_realarm.safety_factor
-                timestep = self.cfg.model.rbsolver_iter.use_realarm.timestep
-                arm.set_mode(4)
-                arm.set_state(state=0)
-                time.sleep(1)
-                for target_qpos in tqdm.tqdm(plan_qposes):
-                    code, joint_state = arm.get_joint_states(is_radian=True)
-                    joint_pos = joint_state[0][:7]
-                    diff = target_qpos[:7] - joint_pos
-                    qvel = diff / timestep / safety_factor
-                    qvel_cliped = np.clip(qvel, -0.3, 0.3)
-                    arm.vc_set_joint_velocity(qvel_cliped, is_radian=True, is_sync=True, duration=timestep)
-                    time.sleep(timestep)
-                arm.set_mode(0)
-                time.sleep(1)
-                print()
-        elif self.cfg.use_xarm is False:
-            self.arm.go_to_rest_pose()
+        return
 
     def initialize_K(self):
         output = self.cfg.model.rbsolver_iter.init_K
