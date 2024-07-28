@@ -66,9 +66,9 @@ class RBSolver(nn.Module):
             losses.append(loss)
         loss = torch.stack(losses).mean()
         all_frame_all_link_si = torch.stack(all_frame_all_link_si)
-        cv2.imshow("all_frame_all_link_si", ((all_frame_all_link_si[0].detach().cpu().numpy()) * 255).astype(np.uint8))
-        cv2.imshow("mask_ref", ((masks_ref[0].detach().cpu().numpy()) * 255).astype(np.uint8))
-        cv2.waitKey(10)
+        # cv2.imshow("all_frame_all_link_si", ((all_frame_all_link_si[0].detach().cpu().numpy()) * 255).astype(np.uint8))
+        # cv2.imshow("mask_ref", ((masks_ref[0].detach().cpu().numpy()) * 255).astype(np.uint8))
+        # cv2.waitKey(10)
         output = {"rendered_masks": all_frame_all_link_si,
                   "ref_masks": masks_ref,
                   "error_maps": (all_frame_all_link_si - masks_ref.float()).abs(),
