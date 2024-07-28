@@ -18,7 +18,7 @@ solver:
   trainer: "rbsolver_iter"
   log_interval: 20
   explore_iters: 10 # the number of iterations for exploration
-  num_epochs: 500 # the number of iterations for optimization
+  num_epochs: 2000 # the number of iterations for optimization
   max_lr: 0.003 # the learning rate for optimization
   batch_size: 100 # a large number to make sure all the images are in one batch
   save_freq: 20

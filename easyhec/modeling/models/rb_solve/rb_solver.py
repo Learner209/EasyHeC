@@ -8,9 +8,12 @@ import trimesh
 from easyhec.structures.nvdiffrast_renderer import NVDiffrastRenderer
 from easyhec.utils import utils_3d
 from easyhec.utils.utils_3d import se3_log_map, se3_exp_map
+import cv2
 
 import logging
 logger = logging.getLogger(__name__)
+
+
 class RBSolver(nn.Module):
     def __init__(self, cfg):
         super().__init__()
@@ -20,7 +23,7 @@ class RBSolver(nn.Module):
         self.dbg = self.total_cfg.dbg
         mesh_paths = self.cfg.mesh_paths
         for link_idx, mesh_path in enumerate(mesh_paths):
-            mesh = trimesh.load(osp.expanduser(mesh_path), force = 'mesh')
+            mesh = trimesh.load(osp.expanduser(mesh_path), force='mesh')
             vertices = torch.from_numpy(mesh.vertices).float()
             faces = torch.from_numpy(mesh.faces).int()
             self.register_buffer(f'vertices_{link_idx}', vertices)
@@ -31,25 +34,23 @@ class RBSolver(nn.Module):
         init_dof = se3_log_map(torch.as_tensor(init_Tc_c2b, dtype=torch.float32)[None].permute(0, 2, 1), eps=1e-5,
                                backend="opencv")[0]
         self.dof = nn.Parameter(init_dof, requires_grad=True)
-        self.K = torch.as_tensor(self.cfg.init_K, dtype=torch.float32)
+        # setup renderer
         self.H, self.W = self.cfg.H, self.cfg.W
         self.renderer = NVDiffrastRenderer([self.H, self.W])
-        self.register_buffer(f"history_ops", torch.zeros(10000, 6))
-        self.register_buffer(f"history_K", torch.zeros(10000, 6))
+
+        self.register_buffer(f'history_ops', torch.zeros(10000, 6))
 
     def forward(self, dps):
 
         assert dps['global_step'] == 0
-        put_ops_id = (self.history_ops == 0).all(dim=1).nonzero()[0, 0].item()
-        self.history_ops[put_ops_id] = self.dof.detach()
-        put_K_id = (self.history_K == 0).all(dim=1).nonzero()[0, 0].item()
-        self.history_K[put_K_id] = self.K.detach().flatten()[:6]
+        put_id = (self.history_ops == 0).all(dim=1).nonzero()[0, 0].item()
+        self.history_ops[put_id] = self.dof.detach()
         Tc_c2b = se3_exp_map(self.dof[None]).permute(0, 2, 1)[0]
         losses = []
         all_frame_all_link_si = []
         masks_ref = dps['mask']
         link_poses = dps['link_poses']
-        K = self.K
+        K = dps['K'][0]
 
         batch_size = masks_ref.shape[0]
         for bid in range(batch_size):
@@ -65,6 +66,9 @@ class RBSolver(nn.Module):
             losses.append(loss)
         loss = torch.stack(losses).mean()
         all_frame_all_link_si = torch.stack(all_frame_all_link_si)
+        cv2.imshow("all_frame_all_link_si", ((all_frame_all_link_si[0].detach().cpu().numpy()) * 255).astype(np.uint8))
+        cv2.imshow("mask_ref", ((masks_ref[0].detach().cpu().numpy()) * 255).astype(np.uint8))
+        cv2.waitKey(10)
         output = {"rendered_masks": all_frame_all_link_si,
                   "ref_masks": masks_ref,
                   "error_maps": (all_frame_all_link_si - masks_ref.float()).abs(),
