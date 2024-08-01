@@ -168,6 +168,7 @@ class RBSolverIterTrainer(BaseTrainer):
                                                                         np.ndarray: the fitted Tc_c2b 4x4 Matrix.
         """
         Tc_c2b = None
+        history_Tc_c2b = []
         batch_imgs_paths = kwargs["batch_imgs_paths"]
         qposes = kwargs["qposes"]
         camera_intrinsics = kwargs["camera_intrinsics"]
@@ -206,11 +207,11 @@ class RBSolverIterTrainer(BaseTrainer):
             )
             self.rebuild()
             metric_ams, Tc_c2b = self.do_fit(explore_it)
+            history_Tc_c2b.append(Tc_c2b.detach().cpu().numpy())
 
             # render gt mask and pred mask and overlay.
             gt_mask = render_mask(urdf_path, mesh_paths, gt_local_to_world_matrices[explore_it], np.array(camera_intrinsics[explore_it]), H, W, qposes[explore_it])
             pred_mask = render_mask(urdf_path, mesh_paths, Tc_c2b.detach().cpu().numpy(), np.array(camera_intrinsics[explore_it]), H, W, qposes[explore_it])
-            overlay_img_path = os.path.join(local_save_path, "outputs", "overlay_img.png")
             overlay_img = overlay_mask_on_img(
                 cv2.imread(batch_imgs_paths[explore_it]),
                 gt_mask,
@@ -220,12 +221,13 @@ class RBSolverIterTrainer(BaseTrainer):
                 alpha=0.5,
                 show=True,
                 save_to_disk=False,
-                img_save_path=overlay_img_path,
+                img_save_path=None,
             )
 
         self.reset_to_zero_qpos()
+        history_Tc_c2b = np.stack(history_Tc_c2b)
 
-        return Tc_c2b.detach().cpu().numpy().tolist()
+        return history_Tc_c2b
 
     def capture_data(
             self, index, fake_img_path=None, fake_camera_intrinsics=None, fake_camera_extrinsics=None, local_save_path=None, fake_gt_mask=None):
