@@ -9,6 +9,7 @@ class DatasetCatalog(object):
     @staticmethod
     def get(name: str):
         if name.startswith("xarm7_real"):
+            raise Exception("xarm7_real is not supported right now !!!")
             return get_xarm7_real(name)
         elif name.startswith("franka_real"):
             return get_franka_real(name)
@@ -25,6 +26,7 @@ def get_xarm7_real(name):
               'ds_len': -1,
               }
     )
+
 
 def get_franka_real(name):
     items = name.split("/")[1:]
