@@ -219,7 +219,7 @@ class RBSolverIterTrainer(BaseTrainer):
                 rgb1=(255, 0, 255),
                 rgb2=(0, 255, 255),
                 alpha=0.5,
-                show=True,
+                show=False,
                 save_to_disk=False,
                 img_save_path=None,
             )
